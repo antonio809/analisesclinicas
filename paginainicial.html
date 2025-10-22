@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Calculadora IMC e Pressão — Debug</title>
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --accent:#06b6d4;
+      --muted:#94a3b8;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,#071026 0%, #062033 60%);color:#e6eef6}
+    .container{max-width:900px;margin:32px auto;padding:20px}
+    header{display:flex;gap:16px;align-items:center}
+    .logo{width:56px;height:56px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#3b82f6);display:flex;align-items:center;justify-content:center;font-weight:700}
+    h1{font-size:20px;margin:0}
+    p.lead{margin:4px 0 14px;color:var(--muted)}
+
+    .grid{display:grid;grid-template-columns:1fr 360px;gap:18px}
+    @media (max-width:920px){.grid{grid-template-columns:1fr}}
+
+    .card{background:var(--card);padding:18px;border-radius:12px;box-shadow:0 6px 24px rgba(3,10,18,0.6);}
+    label{display:block;font-size:13px;color:var(--muted);margin-bottom:6px}
+    .row{display:flex;gap:12px}
+    input[type='number'], input[type='text'], select{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.04);background:var(--glass);color:inherit}
+    .controls{display:flex;gap:8px;margin-top:12px}
+    button{padding:10px 14px;border-radius:10px;border:0;background:linear-gradient(90deg,var(--accent),#3b82f6);color:#042027;font-weight:600;cursor:pointer}
+    button.secondary{background:transparent;border:1px solid rgba(255,255,255,0.06);color:var(--muted)}
+    .result{padding:14px;border-radius:10px;margin-top:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));display:flex;flex-direction:column;gap:6px}
+    .big{font-size:36px;font-weight:700}
+    .small{font-size:14px;color:var(--muted)}
+    .history{max-height:300px;overflow:auto;margin-top:12px}
+    .history-item{display:flex;justify-content:space-between;padding:8px;border-radius:8px;background:rgba(255,255,255,0.02);margin-bottom:8px}
+    .badge{padding:6px 8px;border-radius:999px;font-weight:600}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .underweight{background:#f97316;color:#fff}
+    .normal{background:#10b981;color:#012018}
+    .overweight{background:#f59e0b;color:#1a0f00}
+    .obesity1{background:#f43f5e;color:#fff}
+    .obesity2{background:#be185d;color:#fff}
+    .obesity3{background:#7c1736;color:#fff}
+    .flex-col{display:flex;flex-direction:column}
+    .muted{color:var(--muted)}
+    .debug { margin-top:12px;padding:10px;background: rgba(255,255,255,0.02);border-radius:8px;font-size:13px;color: #f8fafc;}
+    .debug pre { white-space:pre-wrap; margin:0; color:#f8fafc; font-size:13px; }
+    @media (max-width:480px){ .container{padding:12px;margin:12px} .grid{gap:10px} }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">IMC</div>
+      <div>
+        <h1>Calculadora de IMC e Pressão</h1>
+        <p class="lead">Insira peso, altura e pressão arterial. Funciona offline — salva histórico localmente.</p>
+      </div>
+    </header>
+
+    <main class="grid">
+      <section class="card">
+        <div class="flex-col">
+          <label for="weight">Peso</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="weight" type="number" placeholder="Ex: 70" min="1" step="0.1" aria-label="Peso em quilogramas" />
+            <select id="weightUnit"><option value="kg">kg</option><option value="lb">lb</option></select>
+          </div>
+
+          <label for="height" style="margin-top:12px">Altura</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="height" type="number" placeholder="Ex: 1.75" min="0.3" step="0.01" aria-label="Altura" />
+            <select id="heightUnit"><option value="m">m</option><option value="cm">cm</option></select>
+          </div>
+
+          <!-- campo pressão arterial -->
+          <label for="pressure" style="margin-top:12px">Pressão arterial</label>
+          <input id="pressure" type="text" placeholder="Ex: 120/80 mmHg" aria-label="Pressão arterial" />
+
+          <div class="controls">
+            <button id="calcBtn">Calcular IMC</button>
+            <button id="clearBtn" class="secondary">Limpar</button>
+            <button id="exportBtn" class="secondary">Exportar CSV</button>
+          </div>
+
+          <div id="resultCard" class="result" aria-live="polite" hidden>
+            <div class="small">Seu IMC</div>
+            <div class="big" id="bmiValue">0,0</div>
+            <div class="small">Classificação: <span id="bmiClass" class=""></span></div>
+            <div class="small muted" id="advice">&nbsp;</div>
+            <div class="small muted" id="pressureInfo">&nbsp;</div>
+          </div>
+
+          <div class="history" id="historyList" aria-live="polite"></div>
+
+          <div class="debug" id="debugBox" aria-live="polite" hidden>
+            <strong>Debug</strong>
+            <pre id="debugLog"></pre>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card">
+        <h3 style="margin-top:0">Tabela de referência</h3>
+        <p class="muted">IMC = peso (kg) / (altura (m))²</p>
+        <ul style="padding-left:16px;line-height:1.6">
+          <li>&lt; 18.5 — <strong>Magreza</strong></li>
+          <li>18.5–24.9 — <strong>Normal</strong></li>
+          <li>25.0–29.9 — <strong>Sobrepeso</strong></li>
+          <li>30.0–34.9 — <strong>Obesidade I</strong></li>
+          <li>35.0–39.9 — <strong>Obesidade II</strong></li>
+          <li>≥ 40.0 — <strong>Obesidade III</strong></li>
+        </ul>
+
+        <div style="margin-top:18px">
+          <h3 style="margin-top:0">Dicas de Pressão Arterial</h3>
+          <ul style="padding-left:16px;line-height:1.6">
+            <li><strong>Normal:</strong> até 120/80 mmHg — mantenha hábitos saudáveis.</li>
+            <li><strong>Pré-hipertensão:</strong> entre 121/81 e 139/89 mmHg — atenção à alimentação e ao estresse.</li>
+            <li><strong>Hipertensão (alta):</strong> ≥140/90 mmHg — procure orientação médica.</li>
+            <li><strong>Hipotensão (baixa):</strong> ≤90/60 mmHg — evite longos jejuns e mantenha-se hidratado.</li>
+          </ul>
+        </div>
+
+        <div style="margin-top:18px">
+          <h3 style="margin-top:0">Dicas sobre IMC</h3>
+          <ul style="padding-left:16px;line-height:1.6">
+            <li><strong>Magreza:</strong> Busque orientação nutricional para ganhar peso de forma saudável.</li>
+            <li><strong>Normal:</strong> Continue mantendo hábitos saudáveis e uma alimentação equilibrada.</li>
+            <li><strong>Sobrepeso:</strong> Reduza o consumo de ultraprocessados e aumente atividades físicas.</li>
+            <li><strong>Obesidade:</strong> É importante acompanhamento médico e nutricional personalizado.</li>
+          </ul>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="container" style="max-width:900px">
+      <p class="muted">Feito por Antônio (250 INFORMÁTICA) — rode este site no navegador do seu celular.</p>
+    </footer>
+  </div>
+
+  <script>
+    // defensivo: seleciona elementos com checagem
+    const $ = id => document.getElementById(id);
+    const weightEl = $('weight'), heightEl = $('height'), pressureEl = $('pressure');
+    const weightUnitEl = $('weightUnit'), heightUnitEl = $('heightUnit');
+    const calcBtn = $('calcBtn'), clearBtn = $('clearBtn'), exportBtn = $('exportBtn');
+    const resultCard = $('resultCard'), bmiValue = $('bmiValue'), bmiClass = $('bmiClass');
+    const adviceEl = $('advice'), pressureInfo = $('pressureInfo'), historyList = $('historyList');
+    const debugBox = $('debugBox'), debugLog = $('debugLog');
+
+    function showDebug(msg){
+      if(!debugBox || !debugLog) return;
+      debugBox.hidden = false;
+      const t = new Date().toLocaleTimeString();
+      debugLog.textContent = `${t} — ${msg}\n` + debugLog.textContent;
+      console.log('DEBUG:', msg);
+    }
+
+    // carregar histórico com tolerância a formatos antigos
+    let history = [];
+    try {
+      const raw = localStorage.getItem('imc_history_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          // normalize each item to ensure new keys exist
+          history = parsed.map(it => {
+            return {
+              date: it.date || new Date().toLocaleString(),
+              weightDisplay: it.weightDisplay || (it.weight ? String(it.weight) : '—'),
+              heightDisplay: it.heightDisplay || (it.height ? String(it.height) : '—'),
+              pressureDisplay: it.pressureDisplay || it.pressure || '—',
+              bmi: (typeof it.bmi === 'number') ? it.bmi : (it.bmi ? Number(String(it.bmi).replace(',','.')) : NaN),
+              label: it.label || '—',
+              cls: it.cls || ''
+            };
+          });
+        }
+      }
+      showDebug('Histórico carregado: ' + history.length + ' itens');
+    } catch (e) {
+      history = [];
+      showDebug('Falha ao carregar histórico: ' + (e && e.message));
+    }
+
+    function saveHistory(){
+      try {
+        localStorage.setItem('imc_history_v1', JSON.stringify(history));
+        showDebug('Histórico salvo (' + history.length + ')');
+      } catch (e) {
+        showDebug('Erro ao salvar histórico: ' + (e && e.message));
+      }
+    }
+
+    function unitToKg(weight, unit){
+      const n = Number(weight);
+      if (!isFinite(n)) return NaN;
+      return unit === 'lb' ? n * 0.45359237 : n;
+    }
+
+    function unitToMeters(height, unit){
+      const n = Number(height);
+      if (!isFinite(n)) return NaN;
+      return unit === 'cm' ? n / 100 : n;
+    }
+
+    function classify(imc){
+      if (isNaN(imc)) return {label:'—', cls:'', advice:'IMC inválido.'};
+      if(imc < 18.5) return {label:'Magreza', cls:'underweight', advice:'Procure alimentação equilibrada. Consulte um(a) nutricionista.'};
+      if(imc < 25) return {label:'Normal', cls:'normal', advice:'Ótimo! Mantenha hábitos saudáveis.'};
+      if(imc < 30) return {label:'Sobrepeso', cls:'overweight', advice:'Avalie alimentação e atividade física.'};
+      if(imc < 35) return {label:'Obesidade I', cls:'obesity1', advice:'Consulte um profissional de saúde.'};
+      if(imc < 40) return {label:'Obesidade II', cls:'obesity2', advice:'Procure acompanhamento médico e nutricional.'};
+      return {label:'Obesidade III', cls:'obesity3', advice:'Atenção médica especializada recomendada.'};
+    }
+
+    function renderHistory(){
+      if (!historyList) { showDebug('historyList não encontrado'); return; }
+      historyList.innerHTML = '';
+      if (history.length === 0) {
+        historyList.innerHTML = '<div class="muted">Nenhum cálculo ainda — seus resultados aparecerão aqui.</div>';
+        return;
+      }
+      history.slice().reverse().forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'history-item';
+        const bmiText = (isFinite(item.bmi) ? item.bmi.toFixed(1).replace('.', ',') : '—');
+        div.innerHTML = `
+          <div>
+            <div style="font-weight:600">${item.date}</div>
+            <div class="muted">Peso: ${item.weightDisplay} • Altura: ${item.heightDisplay} • Pressão: ${item.pressureDisplay}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="badge ${item.cls}">${bmiText}</div>
+            <div class="muted" style="font-size:12px;margin-top:6px">${item.label}</div>
+          </div>
+        `;
+        historyList.appendChild(div);
+      });
+    }
+
+    function exportCSV(){
+      if (history.length === 0) return alert('Histórico vazio.');
+      const rows = [['Data','Peso','Altura','Pressão','IMC','Classificação']];
+      history.forEach(h => {
+        const bmiVal = isFinite(h.bmi) ? h.bmi.toFixed(2) : '';
+        rows.push([h.date, h.weightDisplay, h.heightDisplay, (h.pressureDisplay || '—'), bmiVal, h.label]);
+      });
+      const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'imc_historico.csv';
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      showDebug('Export CSV gerado.');
+    }
+
+    function analyzePressureString(pRaw) {
+      // returns {sist: number|null, diast: number|null, ok: boolean}
+      if (!pRaw || typeof pRaw !== 'string') return {sist:null,diast:null,ok:false};
+      const m = pRaw.match(/(\d{1,3})\s*\/\s*(\d{1,3})/);
+      if (!m) return {sist:null,diast:null,ok:false};
+      const s = parseInt(m[1],10);
+      const d = parseInt(m[2],10);
+      if (!isFinite(s) || !isFinite(d)) return {sist:null,diast:null,ok:false};
+      return {sist:s,diast:d,ok:true};
+    }
+
+    function safeCalculate(){
+      try {
+        if (!weightEl || !heightEl) { alert('Campos não encontrados no formulário.'); showDebug('Campos peso/altura não encontrados'); return; }
+
+        // read & normalize
+        const wRaw = (weightEl.value || '').toString().trim().replace(',', '.');
+        const hRaw = (heightEl.value || '').toString().trim().replace(',', '.');
+        const pRaw = (pressureEl && (pressureEl.value || '').toString().trim()) || '';
+
+        if (!wRaw || !hRaw) { alert('Preencha peso e altura corretamente.'); return; }
+
+        const wNum = Number(wRaw);
+        const hNum = Number(hRaw);
+
+        if (!isFinite(wNum) || wNum <= 0) { alert('Peso inválido'); return; }
+        if (!isFinite(hNum) || hNum <= 0) { alert('Altura inválida'); return; }
+
+        const kg = unitToKg(wNum, (weightUnitEl && weightUnitEl.value) || 'kg');
+        const m = unitToMeters(hNum, (heightUnitEl && heightUnitEl.value) || 'm');
+
+        if (!isFinite(kg) || !isFinite(m) || m <= 0) { alert('Erro na conversão de unidades'); return; }
+
+        const imc = kg / (m * m);
+        const cls = classify(imc);
+
+        // update UI
+        if (bmiValue) bmiValue.textContent = isFinite(imc) ? imc.toFixed(1).replace('.', ',') : '—';
+        if (bmiClass) {
+          bmiClass.textContent = cls.label;
+          bmiClass.className = ''; // reset classes
+          if (cls.cls) bmiClass.classList.add(cls.cls);
+        }
+        if (adviceEl) adviceEl.textContent = cls.advice || '';
+        if (pressureInfo) pressureInfo.textContent = 'Pressão arterial: ' + (pRaw || '—');
+        if (resultCard) resultCard.hidden = false;
+
+        // analyze pressure and pop-up if necessary
+        const p = analyzePressureString(pRaw);
+        if (p.ok) {
+          if (p.sist >= 140 || p.diast >= 90) {
+            alert(`Atenção: pressão alta detectada (${p.sist}/${p.diast} mmHg). Consulte um profissional de saúde.`);
+          } else if (p.sist <= 90 || p.diast <= 60) {
+            alert(`Atenção: pressão baixa detectada (${p.sist}/${p.diast} mmHg). Hidrate-se e procure acompanhamento se necessário.`);
+          } else {
+            // within normal range — no popup
+            showDebug(`Pressão dentro da faixa normal (${p.sist}/${p.diast}).`);
+          }
+        } else {
+          showDebug('Pressão não reconhecida ou vazia: "' + pRaw + '"');
+        }
+
+        // save history (normalized)
+        const now = new Date().toLocaleString();
+        const item = {
+          date: now,
+          weightDisplay: wNum + ' ' + ((weightUnitEl && weightUnitEl.value) || 'kg'),
+          heightDisplay: hNum + ' ' + ((heightUnitEl && heightUnitEl.value) || 'm'),
+          pressureDisplay: (pRaw || '—'),
+          bmi: isFinite(imc) ? imc : NaN,
+          label: cls.label,
+          cls: cls.cls
+        };
+        history.push(item);
+        saveHistory();
+        renderHistory();
+        showDebug('Cálculo realizado: IMC=' + (isFinite(imc) ? imc.toFixed(2) : 'NaN'));
+      } catch (err) {
+        console.error(err);
+        showDebug('Erro no cálculo: ' + (err && err.message ? err.message : String(err)));
+        alert('Ocorreu um erro durante o cálculo. Veja o painel Debug para detalhes.');
+      }
+    }
+
+    // attach events safely
+    if (calcBtn) calcBtn.addEventListener('click', safeCalculate);
+    else showDebug('Botão calcular não encontrado (id=calcBtn)');
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        if (confirm('Limpar histórico e campos?')) {
+          if (weightEl) weightEl.value = '';
+          if (heightEl) heightEl.value = '';
+          if (pressureEl) pressureEl.value = '';
+          if (resultCard) resultCard.hidden = true;
+          history = [];
+          saveHistory();
+          renderHistory();
+          showDebug('Campos e histórico limpos.');
+        }
+      });
+    } else showDebug('Botão clear não encontrado');
+
+    if (exportBtn) exportBtn.addEventListener('click', exportCSV);
+    else showDebug('Botão export não encontrado');
+
+    // UX: replace comma with dot while typing
+    [weightEl, heightEl].forEach(el => {
+      if (!el) return;
+      el.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (val && val.indexOf(',') !== -1) {
+          e.target.value = val.replace(/,/g, '.');
+        }
+      });
+    });
+
+    // init
+    renderHistory();
+    showDebug('Script inicializado.');
+  </script>
+</body>
+</html>
